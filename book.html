@@ -94,8 +94,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:1000;background:rgba(8,10,15,0.9
 </head>
 <body>
 <nav>
-  <a href="move-index.html" class="nav-logo">TRAVEX <span>MOVE</span></a>
-  <a href="move-index.html" class="nav-back">← Home</a>
+  <a href="index.html" class="nav-logo">TRAVEX <span>MOVE</span></a>
+  <a href="index.html" class="nav-back">← Home</a>
 </nav>
 
 <div class="book-wrap">
@@ -360,14 +360,14 @@ async function submitBooking(){
   document.getElementById("successBox").style.display="block";
   document.getElementById("trackingCodeDisplay").textContent=trackingCode;
 
-  const trackUrl=`${window.location.origin}/move-track.html?code=${trackingCode}`;
+  const trackUrl=`${window.location.origin}/track.html?code=${trackingCode}`;
   const custName=document.getElementById("custName").value;
   const custPhone=document.getElementById("custPhone").value;
   const waMsg=encodeURIComponent(`Hello ${custName}! 🚚\n\nYour delivery from *Travex Move* is on its way!\n\n📦 Cargo: ${document.getElementById("cargoDesc").value}\n🚗 Vehicle: ${ICONS[selectedVType]} ${selectedVType}\n💰 Fare: TZS ${calculatedPrice.toLocaleString()} (cash)\n\n📍 Track your delivery live:\n${trackUrl}\n\nTracking Code: *${trackingCode}*`);
 
   document.getElementById("waShareBtn").href=`https://wa.me/${custPhone.replace(/\D/g,"")}?text=${waMsg}`;
   document.getElementById("chatBtn").href=`move-chat.html?delivery=${data.id}`;
-  document.getElementById("trackBtn").href=`move-track.html?code=${trackingCode}`;
+  document.getElementById("trackBtn").href=`track.html?code=${trackingCode}`;
 }
 </script>
 </body>

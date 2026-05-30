@@ -82,7 +82,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:1000;background:rgba(8,10,15,0.9
 </head>
 <body>
 <nav>
-  <a href="move-index.html" class="nav-logo">TRAVEX <span>MOVE</span></a>
+  <a href="index.html" class="nav-logo">TRAVEX <span>MOVE</span></a>
 </nav>
 
 <!-- SEARCH -->
@@ -225,13 +225,26 @@ async function trackDelivery(){
   updateStatus(delivery.status);
 
   // Map placeholder with Google Maps link
+  // Build map with route
   const mapEl=document.getElementById("deliveryMap");
-  const pickup=encodeURIComponent(delivery.pickup_address);
-  const dropoff=encodeURIComponent(delivery.dropoff_address);
+  const pickup=encodeURIComponent(delivery.pickup_address+", Tanzania");
+  const dropoff=encodeURIComponent(delivery.dropoff_address+", Tanzania");
+  
   mapEl.innerHTML=`
-    <iframe width="100%" height="100%" frameborder="0" style="border:0"
-    src="https://www.google.com/maps/embed/v1/directions?key=AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU3CRo&origin=${pickup}&destination=${dropoff}&mode=driving"
-    allowfullscreen></iframe>`;
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;background:#0D1017;padding:2rem;text-align:center">
+      <div style="font-size:3rem">📍</div>
+      <div style="font-size:0.9rem;color:rgba(255,255,255,0.7);font-weight:600">Live Tracking Active</div>
+      <div style="font-size:0.78rem;color:rgba(255,255,255,0.35);line-height:1.6">
+        From: <strong style="color:var(--orange)">${delivery.pickup_address}</strong><br>
+        To: <strong style="color:var(--orange)">${delivery.dropoff_address}</strong>
+      </div>
+      <a href="https://www.google.com/maps/dir/${pickup}/${dropoff}" 
+         target="_blank"
+         style="background:var(--orange);color:#fff;padding:0.65rem 1.5rem;font-size:0.82rem;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:0.4rem;margin-top:0.5rem">
+        🗺️ Open Route in Google Maps
+      </a>
+      <div style="font-size:0.7rem;color:rgba(255,255,255,0.2)">Driver location updates via status bar above</div>
+    </div>`;
 
   // Realtime updates
   subscribeRealtime(delivery.id);
