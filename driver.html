@@ -141,6 +141,7 @@ input:checked + .toggle-slider:before{transform:translateX(20px)}
 </style>
 </head>
 <body>
+<div id="gpsStatus" style="position:fixed;bottom:12px;right:12px;background:rgba(5,150,105,0.9);color:#fff;padding:6px 14px;border-radius:999px;font-size:11px;font-weight:700;z-index:9999;display:none;backdrop-filter:blur(10px)">📍 GPS Active</div>
 <nav>
   <a href="index.html" class="nav-logo">TRAVEX <span>MOVE</span></a>
   <a href="index.html" class="nav-back">← Back to Home</a>
@@ -511,6 +512,36 @@ async function loadRequests(){
     </div>`).join("");
 }
 
+async function startGPSTracking(deliveryId) {
+  if (!navigator.geolocation) return;
+  const gpsEl = document.getElementById('gpsStatus');
+  if (gpsEl) gpsEl.style.display = 'block';
+
+  const send = (pos) => {
+    const { latitude: lat, longitude: lng } = pos.coords;
+    sb.from('move_deliveries')
+      .update({ driver_lat: lat, driver_lng: lng })
+      .eq('id', deliveryId).then(() => {
+        if (gpsEl) gpsEl.textContent = '📍 GPS Active';
+      });
+  };
+
+  // Watch position
+  const watchId = navigator.geolocation.watchPosition(send,
+    () => {}, { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 });
+
+  // Also send every 20s
+  const interval = setInterval(() => {
+    navigator.geolocation.getCurrentPosition(send, () => {}, { enableHighAccuracy: true });
+  }, 20000);
+
+  window._gpsCleanup = () => {
+    navigator.geolocation.clearWatch(watchId);
+    clearInterval(interval);
+    if (gpsEl) gpsEl.style.display = 'none';
+  };
+}
+
 async function acceptDelivery(deliveryId,trackingCode){
   await sb.from("move_deliveries").update({
     driver_id:currentDriver.id,
@@ -520,6 +551,7 @@ async function acceptDelivery(deliveryId,trackingCode){
   
   // Show notification then redirect to track
   alert("✅ Delivery accepted! Head to pickup location.");
+  startGPSTracking(deliveryId);
   window.location=`track.html?code=${trackingCode}`;
 }
 

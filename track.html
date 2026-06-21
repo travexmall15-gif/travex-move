@@ -122,6 +122,13 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(8,10,15,0.97
 @media(max-width:768px){.info-grid{grid-template-columns:1fr}}
 @media(max-width:600px){.search-row{flex-direction:column}.search-input{border-right:1px solid rgba(255,255,255,0.08);border-bottom:none}.chat-msgs{height:260px}}
 </style>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    .leaflet-container { background: #0D1017 !important; }
+    .driver-marker-icon { background:#F97316;border:3px solid #fff;border-radius:50%;width:22px;height:22px;box-shadow:0 0 0 4px rgba(249,115,22,0.3);animation:markerPulse 2s infinite }
+    @keyframes markerPulse{0%,100%{box-shadow:0 0 0 4px rgba(249,115,22,0.3)}50%{box-shadow:0 0 0 8px rgba(249,115,22,0.1)}}
+  </style>
 </head>
 <body>
 <nav>
@@ -174,14 +181,21 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(8,10,15,0.97
   <!-- MAP -->
   <div class="map-card">
     <div class="map-header">
-      <div class="map-title"><div class="live-dot"></div>Live Route</div>
-      <div class="map-status" id="mapStatusText">Loading...</div>
+      <div class="map-title"><div class="live-dot"></div>Live GPS Tracking</div>
+      <div class="map-status" id="mapStatusText">Connecting...</div>
     </div>
-    <div class="map-body">
+    <!-- Leaflet Map -->
+    <div id="liveMap" style="height:320px;width:100%;background:#0D1017;z-index:1"></div>
+    <div class="map-body" style="padding:12px 16px">
       <div class="map-route" id="mapRoute"></div>
-      <a id="mapsBtn" href="#" target="_blank" class="map-open-btn">
-        🗺️ Open Live Route in Google Maps
-      </a>
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <a id="mapsBtn" href="#" target="_blank" class="map-open-btn" style="flex:1;text-align:center">
+          🗺️ Open in Google Maps
+        </a>
+        <button onclick="centerMap()" style="padding:8px 14px;background:rgba(249,115,22,0.12);border:1px solid rgba(249,115,22,0.3);color:#F97316;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">
+          📍 Center Map
+        </button>
+      </div>
     </div>
   </div>
 
@@ -324,6 +338,9 @@ async function track(){
       <div><div style="font-size:0.7rem;color:var(--green);font-weight:700;margin-bottom:2px">DROPOFF</div><div style="color:var(--text)">${data.dropoff_address}</div></div>
     </div>`;
 
+  // Initialize Leaflet map
+  initLiveMap(data);
+
   // Status
   updateStatus(data.status);
 
@@ -461,6 +478,152 @@ async function sendMsg(){
 function escapeHtml(text){
   return text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 }
+function escapeHtml(text){
+  return text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// ═══════════════════════════
+// LIVE GPS MAP (Leaflet)
+// ═══════════════════════════
+let liveMap = null;
+let driverMarker = null;
+let pickupMarker = null;
+let deliveryMarker = null;
+let currentDeliveryData = null;
+let mapGeoInterval = null;
+
+async function initLiveMap(data) {
+  currentDeliveryData = data;
+
+  // Wait for DOM
+  await new Promise(r => setTimeout(r, 100));
+
+  const mapEl = document.getElementById('liveMap');
+  if (!mapEl || !window.L) return;
+
+  // Default: Dar es Salaam
+  const defaultLat = -6.7924, defaultLng = 39.2083;
+
+  // Init map
+  if (!liveMap) {
+    liveMap = L.map('liveMap', {
+      center: [defaultLat, defaultLng],
+      zoom: 13,
+      zoomControl: true,
+      attributionControl: false,
+    });
+
+    // Dark tile layer (CartoDB dark)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '© OpenStreetMap, © CartoDB',
+      subdomains: 'abcd', maxZoom: 19,
+    }).addTo(liveMap);
+  }
+
+  // Geocode addresses and place markers
+  await placeMarkers(data);
+
+  // Start tracking driver GPS
+  startDriverTracking(data.id, data.driver_lat, data.driver_lng);
+}
+
+async function geocodeAddress(address) {
+  try {
+    const q = encodeURIComponent(address + ', Tanzania');
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`);
+    const data = await res.json();
+    if (data[0]) return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+  } catch(e) {}
+  return null;
+}
+
+async function placeMarkers(data) {
+  if (!liveMap) return;
+
+  // Clear old markers
+  if (pickupMarker)   liveMap.removeLayer(pickupMarker);
+  if (deliveryMarker) liveMap.removeLayer(deliveryMarker);
+
+  const pickupCoords   = await geocodeAddress(data.pickup_address + ', ' + (data.pickup_area || ''));
+  const deliveryCoords = await geocodeAddress(data.dropoff_address + ', ' + (data.delivery_area || ''));
+
+  const orangeIcon = L.divIcon({
+    html: '<div style="background:#F97316;border:2px solid #fff;border-radius:50%;width:14px;height:14px;box-shadow:0 2px 8px rgba(249,115,22,0.6)"></div>',
+    iconSize: [14,14], iconAnchor: [7,7], className: ''
+  });
+  const greenIcon = L.divIcon({
+    html: '<div style="background:#059669;border:2px solid #fff;border-radius:50%;width:14px;height:14px;box-shadow:0 2px 8px rgba(5,150,105,0.6)"></div>',
+    iconSize: [14,14], iconAnchor: [7,7], className: ''
+  });
+
+  const bounds = [];
+
+  if (pickupCoords) {
+    pickupMarker = L.marker(pickupCoords, { icon: orangeIcon })
+      .addTo(liveMap)
+      .bindPopup(`<b>📦 Pickup</b><br>${data.pickup_address}`);
+    bounds.push(pickupCoords);
+  }
+  if (deliveryCoords) {
+    deliveryMarker = L.marker(deliveryCoords, { icon: greenIcon })
+      .addTo(liveMap)
+      .bindPopup(`<b>🏠 Delivery</b><br>${data.dropoff_address}`);
+    bounds.push(deliveryCoords);
+  }
+
+  if (data.driver_lat && data.driver_lng) {
+    updateDriverMarker(data.driver_lat, data.driver_lng);
+    bounds.push([data.driver_lat, data.driver_lng]);
+  }
+
+  if (bounds.length > 0) {
+    liveMap.fitBounds(bounds, { padding: [40, 40] });
+  }
+}
+
+function updateDriverMarker(lat, lng) {
+  if (!liveMap || !lat || !lng) return;
+
+  const driverIcon = L.divIcon({
+    html: `<div class="driver-marker-icon"></div>`,
+    iconSize: [22,22], iconAnchor: [11,11], className: ''
+  });
+
+  if (driverMarker) {
+    driverMarker.setLatLng([lat, lng]);
+  } else {
+    driverMarker = L.marker([lat, lng], { icon: driverIcon, zIndexOffset: 1000 })
+      .addTo(liveMap)
+      .bindPopup('🏍️ <b>Driver Location</b><br>Updated live');
+  }
+}
+
+function centerMap() {
+  if (!liveMap) return;
+  if (driverMarker) {
+    liveMap.setView(driverMarker.getLatLng(), 15);
+  }
+}
+
+async function startDriverTracking(deliveryId, initLat, initLng) {
+  if (initLat && initLng) updateDriverMarker(initLat, initLng);
+
+  // Poll Supabase for driver location every 10 seconds
+  if (mapGeoInterval) clearInterval(mapGeoInterval);
+  mapGeoInterval = setInterval(async () => {
+    const { data } = await sb.from('move_deliveries')
+      .select('driver_lat,driver_lng,status')
+      .eq('id', deliveryId)
+      .single();
+    if (data?.driver_lat && data?.driver_lng) {
+      updateDriverMarker(data.driver_lat, data.driver_lng);
+      document.getElementById('mapStatusText').textContent =
+        data.status === 'in_transit' ? '🟢 Driver Moving' :
+        data.status === 'delivered'  ? '✅ Delivered' : '🟡 Driver Ready';
+    }
+  }, 10000);
+}
+
 </script>
 </body>
 </html>
